@@ -40,13 +40,24 @@ class MTLR(models.pmf.PMFBase):
         with Neural Networks. arXiv preprint arXiv:1910.06724, 2019.
         https://arxiv.org/pdf/1910.06724.pdf
     """
-    def __init__(self, net, optimizer=None, device=None, duration_index=None, loss=None):
+    def __init__(self, net, optimizer=None, device=None, duration_index=None, loss=None,):
         if loss is None:
             loss = models.loss.NLLMTLRLoss()
         super().__init__(net, loss, optimizer, device, duration_index)
-
-    def predict_pmf(self, input, batch_size=8224, numpy=None, eval_=True, to_cpu=False, num_workers=0):
-        preds = self.predict(input, batch_size, False, eval_, False, to_cpu, num_workers)
-        preds = utils.cumsum_reverse(preds, dim=1)
+    
+    # EME le 02/09/2021
+    def make_dataloader(self, data, batch_size, shuffle, num_workers=0):
+        dataloader = super().make_dataloader(data, batch_size, shuffle, num_workers,
+                                             make_dataset=models.data.DeepHitDataset)
+        return dataloader
+        
+    def make_dataloader_predict(self, input, batch_size, shuffle=False, num_workers=0):
+        dataloader = super().make_dataloader(input, batch_size, shuffle, num_workers)
+        return dataloader
+                
+    def predict_pmf(self, input, batch_size=8224, numpy=None, eval_=True, to_cpu=False, num_workers=0, grads=False):
+        # EME le 18/06/2021 preds = self.predict(input, batch_size, False, eval_, False, to_cpu, num_workers)
+        preds = self.predict(input, batch_size, False, eval_, grads, to_cpu, num_workers)
+        preds = utils.cumsum_reverse(preds, dim=1) 
         pmf = utils.pad_col(preds).softmax(1)[:, :-1]
         return tt.utils.array_or_tensor(pmf, numpy, input)
