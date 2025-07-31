@@ -248,6 +248,17 @@ def rank_loss_deephit_single(phi: Tensor, idx_durations: Tensor, events: Tensor,
     y = torch.zeros_like(pmf).scatter(1, idx_durations, 1.) # one-hot
     rank_loss = _rank_loss_deephit(pmf, y, rank_mat, sigma, reduction)
     return rank_loss
+    
+def rank_loss_mtlr(phi: Tensor, idx_durations: Tensor, events: Tensor, rank_mat: Tensor,
+                             sigma: Tensor, reduction: str = 'mean') -> Tensor:
+
+    idx_durations = idx_durations.view(-1, 1)
+    # events = events.float().view(-1)
+    phi = utils.cumsum_reverse(phi, dim=1)
+    pmf = utils.pad_col(phi).softmax(1)
+    y = torch.zeros_like(pmf).scatter(1, idx_durations, 1.) # one-hot
+    rank_loss = _rank_loss_deephit(pmf, y, rank_mat, sigma, reduction)
+    return rank_loss
 
 def nll_pmf_cr(phi: Tensor, idx_durations: Tensor, events: Tensor, reduction: str = 'mean',
                epsilon: float = 1e-7) -> Tensor:
@@ -501,7 +512,9 @@ class NLLMTLRLoss(_Loss):
     Returns:
         torch.tensor -- The negative log-likelihood.
     """
-    def forward(self, phi: Tensor, idx_durations: Tensor, events: Tensor) -> Tensor:
+    # EME le 10/09/2021
+    #def forward(self, phi: Tensor, idx_durations: Tensor, events: Tensor) -> Tensor:
+    def forward(self, phi: Tensor, idx_durations: Tensor, events: Tensor, rank_mat: Tensor) -> Tensor:
         return nll_mtlr(phi, idx_durations, events, self.reduction)
 
 
@@ -560,6 +573,13 @@ class _DeepHitLoss(_Loss):
             raise ValueError(f"Need `sigma` to be positive. Got {sigma}.")
         self._sigma = sigma
 
+# EME le 02/09/2021
+class NLLMTLRRankLoss(_DeepHitLoss):
+    def forward(self, phi: Tensor, idx_durations: Tensor, events: Tensor, rank_mat: Tensor) -> Tensor:
+        nll = nll_mtlr(phi, idx_durations, events, self.reduction)
+        rank_loss = rank_loss_mtlr(phi, idx_durations, events, rank_mat, self.sigma,
+                                             self.reduction)
+        return self.alpha * nll + (1. - self.alpha) * rank_loss
 
 class DeepHitSingleLoss(_DeepHitLoss):
     """Loss for DeepHit (single risk) model [1].
